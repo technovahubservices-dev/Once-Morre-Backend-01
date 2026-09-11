@@ -5,6 +5,8 @@ import { HTTP_STATUS, PAGINATION, USER_ROLES } from '../config/constants.js'
 import { successResponse, errorResponse, createdResponse } from '../utils/apiResponse.js'
 import { asyncHandler, generateSKU } from '../utils/helpers.js'
 import slugify from 'slugify'
+import GoogleDriveConnection from '../models/GoogleDriveConnection.js'
+import { deleteDriveFile } from './googleDriveService.js'
 
 export const getAllProducts = asyncHandler(async (req, res) => {
   const page = parseInt(req.query.page) || PAGINATION.DEFAULT_PAGE
@@ -99,6 +101,10 @@ export const getProductById = asyncHandler(async (req, res) => {
 export const createProduct = asyncHandler(async (req, res) => {
   const productData = req.body
 
+  if (productData.sku !== undefined && productData.sku.trim() === '') {
+    delete productData.sku
+  }
+
   if (productData.images && productData.images.length > 0) {
     productData.image = productData.images[0]
   }
@@ -145,6 +151,28 @@ export const deleteProduct = asyncHandler(async (req, res) => {
     return errorResponse(res, 'Product not found', HTTP_STATUS.NOT_FOUND)
   }
 
+  const connection = await GoogleDriveConnection.findOne({
+    admin: req.user._id,
+  }).select('+accessTokenEncrypted +refreshTokenEncrypted')
+
+  if (connection && product.images?.length) {
+    for (const image of product.images) {
+      try {
+        const match = typeof image === 'string'
+          ? image.match(/[?&]id=([^&]+)/)
+          : null
+
+        const fileId = match ? match[1] : null
+
+        if (fileId) {
+          await deleteDriveFile(connection, fileId)
+        }
+      } catch (error) {
+        console.error('Failed to delete product image from Google Drive:', error)
+      }
+    }
+  }
+
   await Product.findByIdAndDelete(req.params.id)
 
   return successResponse(res, null, 'Product deleted successfully')
@@ -158,5 +186,8 @@ export const getFeaturedProducts = asyncHandler(async (req, res) => {
 
   return successResponse(res, products, 'Featured products fetched successfully')
 })
+
+
+
 
 

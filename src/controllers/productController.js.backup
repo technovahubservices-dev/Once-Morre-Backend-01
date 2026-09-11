@@ -2,28 +2,15 @@ import { HTTP_STATUS } from '../config/constants.js'
 import { successResponse, errorResponse } from '../utils/apiResponse.js'
 import { asyncHandler } from '../utils/asyncHandler.js'
 import * as productService from '../services/productService.js'
-import GoogleDriveConnection from '../models/GoogleDriveConnection.js'
-import { uploadImageToDrive } from '../services/googleDriveService.js'
 
 export const uploadProductImage = asyncHandler(async (req, res) => {
   if (!req.file) {
     return errorResponse(res, 'Image file is required', HTTP_STATUS.BAD_REQUEST)
   }
 
-  const connection = await GoogleDriveConnection.findOne({ admin: req.user._id })
-    .select('+accessTokenEncrypted +refreshTokenEncrypted')
+  const imageUrl = `/uploads/products/${req.file.filename}`
 
-  if (!connection) {
-    return errorResponse(res, 'Google Drive is not connected', HTTP_STATUS.BAD_REQUEST)
-  }
-
-  const driveFile = await uploadImageToDrive(connection, req.file)
-
-  return successResponse(
-    res,
-    { imageUrl: driveFile.url, fileId: driveFile.id },
-    'Image uploaded successfully'
-  )
+  return successResponse(res, { imageUrl }, 'Image uploaded successfully')
 })
 
 export const getAllProducts = asyncHandler(async (req, res) => {

@@ -17,6 +17,9 @@ import orderRoutes from './src/routes/orderRoutes.js'
 import userRoutes from './src/routes/userRoutes.js'
 import inventoryRoutes from './src/routes/inventoryRoutes.js'
 import subscriptionRoutes from './src/routes/subscriptionRoutes.js'
+import googleDriveRoutes from './src/routes/googleDriveRoutes.js'
+import blogRoutes from './src/routes/blogRoutes.js'
+import siteSettingsRoutes from './src/routes/siteSettingsRoutes.js'
 
 import {
   errorMiddleware,
@@ -148,6 +151,10 @@ app.use('/api/inventory', inventoryRoutes)
 
 app.use('/api/subscriptions', subscriptionRoutes)
 
+app.use('/api/google-drive', googleDriveRoutes)
+app.use('/api/blogs', blogRoutes)
+app.use('/api/site-settings', siteSettingsRoutes)
+
 // Health check
 app.get('/health', (req, res) => {
   res.status(200).json({
@@ -183,3 +190,4 @@ process.on('unhandledRejection', (err) => {
 })
 
 export default app
+
