@@ -28,25 +28,11 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')))
 connectDB()
 
 // Define allowed origins and clean any accidental trailing slashes
-const allowedOrigins = [
-  process.env.CLIENT_URL,
-  'http://localhost:5173',
-  'http://127.0.0.1:5173',
-  'https://oncemorre.in',
-  'https://oncemorre.in'
-]
-  .filter(Boolean)
-  .map(url => url.replace(/\/$/, '')) // Automatically strips trailing slash if present
+// Automatically strips trailing slash if present
 
 // CORS Configuration Middleware
 app.use(cors({
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps, curl, or Postman)
-    if (!origin || allowedOrigins.includes(origin)) {
-      return callback(null, true)
-    }
-    return callback(new Error('Not allowed by CORS'))
-  },
+  origin:true,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Cookie']

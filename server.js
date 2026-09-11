@@ -49,37 +49,11 @@ app.use(
 connectDB()
 
 // Allowed origins
-const allowedOrigins = [
-  process.env.CLIENT_URL,
-  'http://localhost:5173',
-  'http://localhost:5174',
-  'http://127.0.0.1:5173',
-  'https://oncemorre.in',
-  'https://www.oncemorre.in'
-]
-  .filter(Boolean)
-  .map(url => url.replace(/\/$/, ''))
-
-console.log('Allowed CORS origins:', allowedOrigins)
 
 // CORS configuration
 app.use(
   cors({
-    origin: function (origin, callback) {
-      // Allow requests without an origin
-      // Example: Postman, curl, mobile apps
-      if (!origin) {
-        return callback(null, true)
-      }
-
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true)
-      }
-
-      console.error(`CORS blocked origin: ${origin}`)
-
-      return callback(new Error('Not allowed by CORS'))
-    },
+    origin:true,
 
     credentials: true,
 
