@@ -2,7 +2,6 @@ import mongoose from 'mongoose'
 
 const subscriptionSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
-  product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
   plan: { type: String, required: true },
   quantity: { type: Number, required: true, min: 1, default: 1 },
   originalPrice: { type: Number, required: true, min: 0 },
