@@ -73,6 +73,20 @@ backend/
 
 2. Create a `.env` file with your MongoDB connection string and JWT secret.
 
+   To enable the admin-only Google Drive connection, set these backend-only
+   variables in local development and Render. Do not put any of them in the
+   frontend or commit their values:
+
+   ```env
+   GOOGLE_CLIENT_ID=...
+   GOOGLE_CLIENT_SECRET=...
+   GOOGLE_REDIRECT_URI=https://once-morre-backend.onrender.com/api/google-drive/callback
+   GOOGLE_TOKEN_ENCRYPTION_KEY=a-long-random-secret-used-only-to-encrypt-drive-tokens
+   ```
+
+   `CLIENT_URL` must point to the Admin Portal origin. After OAuth it receives
+   the admin at `/admin?googleDrive=connected` (or `googleDrive=error`).
+
 3. Start the development server:
    ```bash
    npm run dev
@@ -140,3 +154,9 @@ backend/
 - GET `/api/inventory/:productId` - Get inventory by product ID
 - PUT `/api/inventory/:productId` - Update inventory (admin)
 - GET `/api/inventory/low-stock` - Get low stock products (admin)
+
+### Google Drive (admin only)
+- GET `/api/google-drive/status` - Safe connection status; no OAuth tokens are returned
+- GET `/api/google-drive/connect` - Starts Google OAuth using the Drive file scope
+- GET `/api/google-drive/callback` - Google OAuth callback
+- POST `/api/google-drive/disconnect` - Revokes credentials when possible and removes the stored connection

@@ -1,0 +1,212 @@
+import crypto from 'crypto'
+import GoogleDriveConnection from '../models/GoogleDriveConnection.js'
+import GoogleDriveOAuthState from '../models/GoogleDriveOAuthState.js'
+import { errorResponse, successResponse } from '../utils/apiResponse.js'
+import { HTTP_STATUS } from '../config/constants.js'
+import {
+  authorizationUrl,
+  createOAuthClient,
+  decryptToken,
+  encryptToken,
+  getDriveInfo,
+  getDriveImage,
+  isInvalidDriveCredentialError,
+  prepareDriveFolders,
+} from '../services/googleDriveService.js'
+
+const STATUS_VERIFY_INTERVAL_MS = 15 * 60 * 1000
+
+const adminPortalUrl = (outcome = 'connected') => {
+  const clientUrl = process.env.CLIENT_URL?.replace(/\/$/, '')
+  return clientUrl ? `${clientUrl}/admin?googleDrive=${outcome}` : null
+}
+
+export const getStatus = async (req, res) => {
+  const connection = await GoogleDriveConnection.findOne({ admin: req.user._id })
+    .select('+accessTokenEncrypted +refreshTokenEncrypted')
+
+  if (!connection) {
+    return res.status(HTTP_STATUS.OK).json({
+      success: true,
+      message: 'Google Drive status fetched successfully',
+      connected: false,
+      data: { connected: false },
+    })
+  }
+
+  const needsVerification = !connection.lastVerifiedAt ||
+    Date.now() - connection.lastVerifiedAt.getTime() >= STATUS_VERIFY_INTERVAL_MS
+
+  if (needsVerification) {
+    try {
+      const driveInfo = await getDriveInfo(connection)
+      connection.email = driveInfo.email || connection.email
+      connection.displayName = driveInfo.displayName || connection.displayName
+      connection.storage = driveInfo.storage || connection.storage
+      connection.lastVerifiedAt = new Date()
+      await connection.save()
+    } catch (error) {
+      if (isInvalidDriveCredentialError(error)) {
+        await connection.deleteOne()
+        return res.status(HTTP_STATUS.OK).json({
+          success: true,
+          message: 'Google Drive connection has expired. Please reconnect.',
+          connected: false,
+          data: { connected: false },
+        })
+      }
+      // A temporary Google outage must not delete a valid saved connection.
+      return res.status(HTTP_STATUS.OK).json({
+        success: true,
+        message: 'Google Drive status could not be verified. Please try again.',
+        connected: true,
+        verification: 'unavailable',
+        data: { connected: true, verification: 'unavailable' },
+      })
+    }
+  }
+
+  const status = {
+    connected: true,
+    email: connection?.email || null,
+    name: connection?.displayName || null,
+    displayName: connection?.displayName || null,
+    storage: connection?.storage || null,
+    connectedAt: connection?.createdAt || null,
+  }
+  // Keep the project's standard `data` envelope while also exposing the fields
+  // at the response root for lightweight status consumers.
+  return res.status(HTTP_STATUS.OK).json({
+    success: true,
+    message: 'Google Drive status fetched successfully',
+    ...status,
+    data: status,
+  })
+}
+
+export const connect = async (req, res) => {
+  try {
+    const value = crypto.randomBytes(32).toString('hex')
+    await GoogleDriveOAuthState.create({
+      value,
+      admin: req.user._id,
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+    })
+    return res.status(HTTP_STATUS.OK).json({
+      success: true,
+      url: authorizationUrl(value),
+    })
+  } catch (error) {
+    return errorResponse(res, 'Unable to start Google Drive connection. Please try again.', HTTP_STATUS.INTERNAL_SERVER_ERROR)
+  }
+}
+
+export const callback = async (req, res) => {
+  const redirectWithError = () => {
+    const url = adminPortalUrl('error')
+    return url
+      ? res.redirect(url)
+      : errorResponse(res, 'Unable to connect Google Drive. Please try again.', HTTP_STATUS.BAD_REQUEST)
+  }
+
+  if (req.query.error || !req.query.code || !req.query.state) return redirectWithError()
+
+  const state = await GoogleDriveOAuthState.findOneAndDelete({
+    value: req.query.state,
+    expiresAt: { $gt: new Date() },
+  })
+  if (!state) return redirectWithError()
+
+  try {
+    const oauthClient = createOAuthClient()
+    const { tokens } = await oauthClient.getToken(req.query.code)
+    if (!tokens.access_token) throw new Error('Google did not return an access token')
+
+    const existing = await GoogleDriveConnection.findOne({ admin: state.admin }).select('+refreshTokenEncrypted')
+    const connection = existing || new GoogleDriveConnection({ admin: state.admin })
+    connection.accessTokenEncrypted = encryptToken(tokens.access_token)
+    if (tokens.refresh_token) connection.refreshTokenEncrypted = encryptToken(tokens.refresh_token)
+    if (!connection.refreshTokenEncrypted) throw new Error('Google did not return a refresh token')
+    connection.tokenExpiry = tokens.expiry_date ? new Date(tokens.expiry_date) : undefined
+    await connection.save()
+
+    // Account/storage metadata is optional and must not block a valid Drive
+    // connection if Google does not provide it for this account.
+    try {
+      const driveInfo = await getDriveInfo(connection)
+      connection.email = driveInfo.email || undefined
+      connection.displayName = driveInfo.displayName || undefined
+      connection.storage = driveInfo.storage || undefined
+      connection.lastVerifiedAt = new Date()
+    } catch (_) {}
+    connection.rootFolderId = await prepareDriveFolders(connection)
+    await connection.save()
+
+    const url = adminPortalUrl()
+    return url ? res.redirect(url) : successResponse(res, { connected: true }, 'Google Drive connected successfully')
+  } catch (error) {
+    return redirectWithError()
+  }
+}
+
+export const disconnect = async (req, res) => {
+  const connection = await GoogleDriveConnection.findOne({ admin: req.user._id }).select('+accessTokenEncrypted')
+  if (!connection) return successResponse(res, { connected: false }, 'Google Drive was not connected')
+
+  // Revocation is best effort; the local encrypted credentials are always removed.
+  try {
+    const auth = createOAuthClient()
+    auth.setCredentials({ access_token: decryptToken(connection.accessTokenEncrypted) })
+    await auth.revokeCredentials()
+  } catch (_) {}
+
+  await connection.deleteOne()
+  return successResponse(res, { connected: false }, 'Google Drive disconnected successfully')
+}
+
+
+export const getImage = async (req, res) => {
+  try {
+    const { fileId } = req.params
+
+    if (!fileId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Google Drive file ID is required',
+      })
+    }
+
+    const connection = await GoogleDriveConnection.findOne().select('+accessTokenEncrypted +refreshTokenEncrypted')
+
+    if (!connection) {
+      return res.status(404).json({
+        success: false,
+        message: 'Google Drive is not connected',
+      })
+    }
+
+    const stream = await getDriveImage(connection, fileId)
+
+    stream.on('error', () => {
+      if (!res.headersSent) {
+        res.status(404).end()
+      } else {
+        res.end()
+      }
+    })
+
+    stream.pipe(res)
+  } catch (error) {
+    console.error('Google Drive image error:', error)
+
+    if (!res.headersSent) {
+      return res.status(500).json({
+        success: false,
+        message: 'Unable to load Google Drive image',
+      })
+    }
+
+    res.end()
+  }
+}
+

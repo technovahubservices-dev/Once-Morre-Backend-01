@@ -42,3 +42,32 @@ export const getSubscriptionStatsAdmin = asyncHandler(async (req, res) => {
   const result = await subscriptionService.getSubscriptionStatsAdmin(req, res)
   return result
 })
+
+export const updateSubscriptionAdmin = async (req, res) => {
+  const result = await subscriptionService.updateSubscriptionAdmin(req, res)
+  return result
+}
+
+export const createSubscriptionPlanAdmin = async (req, res) => {
+  const result = await subscriptionService.createSubscriptionPlanAdmin(req, res)
+  return result
+}
+
+export const updateSubscriptionPlanAdmin = async (req, res) => {
+  const result = await subscriptionService.updateSubscriptionPlanAdmin(req, res)
+  return result
+}
+
+export const deleteSubscriptionPlanAdmin = async (req, res) => {
+  const result = await subscriptionService.deleteSubscriptionPlanAdmin(req, res)
+  return result
+}
+
+export const getSubscriptionPlans = async (req, res) => {
+  const result = await subscriptionService.getSubscriptionPlans(req, res)
+  return result
+}
+export const getSubscriptionPlansAdmin = async (req, res) => {
+  const result = await subscriptionService.getSubscriptionPlansAdmin(req, res)
+  return result
+}
